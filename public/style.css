@@ -11,6 +11,7 @@
   --text-muted: #aaa;
   --text-secondary: #666;
   --header-height: 52px;
+  --accent: #CD0A00;
 }
 
 html, body {
@@ -27,9 +28,15 @@ header {
   height: var(--header-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0 32px;
   border-bottom: 1px solid var(--border);
+}
+
+#week-number {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .toggles {
@@ -108,7 +115,7 @@ header {
 .card {
   position: relative;
   flex: 1;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
 
@@ -127,9 +134,9 @@ header {
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 10px 24px 0;
   pointer-events: none;
 }
 
@@ -138,6 +145,14 @@ header {
   font-weight: 400;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color 0.4s ease;
+}
+
+.card-ends {
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
   transition: color 0.4s ease;
 }
@@ -187,4 +202,214 @@ header {
 #loading.hidden {
   opacity: 0;
   pointer-events: none;
+}
+
+/* ── Edit toggle button ──────────────────────────────── */
+#editToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+#editToggle:hover {
+  color: var(--text-secondary);
+}
+
+#editToggle.active {
+  color: var(--text);
+}
+
+/* ── Card edit-mode controls ─────────────────────────── */
+.card-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  pointer-events: all;
+  transition: opacity 0.15s ease;
+  opacity: 0.4;
+}
+
+.card-edit-btn:hover {
+  opacity: 1;
+}
+
+.card-remove {
+  color: var(--text-muted);
+}
+
+.card-restore {
+  color: var(--text-muted);
+}
+
+/* ── Ghost card (hidden built-in, shown in edit mode) ── */
+.card-ghost {
+  opacity: 0.35;
+}
+
+.card-content-interactive {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 24px 0;
+}
+
+/* ── Add custom timer card ───────────────────────────── */
+.card-add {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-timer-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-timer-form input[type="text"],
+.add-timer-form input[type="date"] {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  padding: 4px 2px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.add-timer-form input[type="text"] {
+  width: 120px;
+}
+
+.add-timer-form input[type="date"] {
+  width: 120px;
+  color-scheme: light dark;
+}
+
+.add-timer-form input:focus {
+  border-bottom-color: var(--text-secondary);
+}
+
+.add-timer-form button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.add-timer-form button:hover {
+  border-color: var(--text-secondary);
+  color: var(--text);
+}
+
+/* ── Theme toggle button ─────────────────────────────── */
+#themeToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+}
+
+#themeToggle:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Dark mode ───────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111114;
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e8e8e8;
+    --text-muted: #555;
+    --text-secondary: #888;
+  }
+
+  :root:not([data-theme="light"]) .track {
+    background: #3a3a3a;
+  }
+
+  :root:not([data-theme="light"]) .toggle input:checked + .track {
+    background: #d0d0d0;
+  }
+
+  :root:not([data-theme="light"]) .toggle input:checked + .track::after {
+    background: #1a1a1a;
+  }
+
+  :root:not([data-theme="light"]) .card {
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+  }
+
+  :root:not([data-theme="light"]) .card.state-not-work-time .card-name,
+  :root:not([data-theme="light"]) .card.state-not-work-time .card-remaining {
+    color: #333;
+  }
+
+  :root:not([data-theme="light"]) .card.state-off-season .card-name,
+  :root:not([data-theme="light"]) .card.state-off-season .card-remaining {
+    color: #5a6070;
+  }
+}
+
+[data-theme="dark"] {
+  --bg: #111114;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8e8e8;
+  --text-muted: #555;
+  --text-secondary: #888;
+}
+
+[data-theme="dark"] .track {
+  background: #3a3a3a;
+}
+
+[data-theme="dark"] .toggle input:checked + .track {
+  background: #d0d0d0;
+}
+
+[data-theme="dark"] .toggle input:checked + .track::after {
+  background: #1a1a1a;
+}
+
+[data-theme="dark"] .card {
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="dark"] .card.state-not-work-time .card-name,
+[data-theme="dark"] .card.state-not-work-time .card-remaining {
+  color: #333;
+}
+
+[data-theme="dark"] .card.state-off-season .card-name,
+[data-theme="dark"] .card.state-off-season .card-remaining {
+  color: #5a6070;
 }

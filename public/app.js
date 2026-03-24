@@ -13,16 +13,23 @@ const CARDS = [
   { id: 'day',    label: 'Day'    },
   { id: 'week',   label: 'Week'   },
   { id: 'month',  label: 'Month'  },
-  { id: 'year',   label: 'Year'   },
   { id: 'summer', label: 'Summer' },
   { id: 'fall',   label: 'Fall'   },
+  { id: 'year',   label: 'Year'   },
 ];
 
 const PARTICLE_COLORS = {
-  active:       [26,  26,  46 ],
+  active:          [26,  26,  46 ],
   'not-work-time': [185, 180, 172],
-  summer:       [196, 144, 42 ],
-  'off-season': [160, 168, 184],
+  summer:          [196, 144, 42 ],
+  'off-season':    [160, 168, 184],
+};
+
+const PARTICLE_COLORS_DARK = {
+  active:          [200, 200, 220],
+  'not-work-time': [60,  58,  55 ],
+  summer:          [196, 144, 42 ],
+  'off-season':    [75,  82,  98 ],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +44,9 @@ const state = {
   midsommar: null,   // Date of midsommarafton
   fallStart: null,   // Date of first Monday of August
   loaded: false,
+  hiddenCards: new Set(JSON.parse(localStorage.getItem('hiddenCards') || '[]')),
+  customTimers: JSON.parse(localStorage.getItem('customTimers') || '[]'),
+  editMode: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +71,14 @@ function firstMondayOfAugust(year) {
   const day = d.getDay(); // 0=Sun, 1=Mon, ...
   const offset = day === 1 ? 0 : (8 - day) % 7;
   return new Date(year, 7, 1 + offset);
+}
+
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 }
 
 function seededRandom(seed) {
@@ -142,6 +160,14 @@ function fmtWorkDays(n, prefix = '', suffix = 'remaining') {
   return [prefix, `${n}`, d, suffix].filter(Boolean).join(' ');
 }
 
+function fmtDate(date) {
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function fmtTime(h, m = 0) {
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Progress Calculations
 // Each returns { progress: 0–1, remainingLabel: string, cardState: string }
@@ -149,37 +175,43 @@ function fmtWorkDays(n, prefix = '', suffix = 'remaining') {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getHourState(now) {
+  const nextHour = (now.getHours() + 1) % 24;
+  const endsLabel = `ends ${fmtTime(nextHour)}`;
   if (state.workMode && !isCurrentlyWorkTime(now)) {
     const msg = isWorkDay(now) ? 'outside work hours' : 'not a work day';
-    return { progress: 0, remainingLabel: msg, cardState: 'not-work-time' };
+    return { progress: 0, remainingLabel: msg, endsLabel, cardState: 'not-work-time' };
   }
   const mins = now.getMinutes() + now.getSeconds() / 60;
   const remaining = Math.ceil(60 - mins);
-  return { progress: mins / 60, remainingLabel: `${remaining}m remaining`, cardState: 'active' };
+  return { progress: mins / 60, remainingLabel: `${remaining}m remaining`, endsLabel, cardState: 'active' };
 }
 
 function getDayState(now) {
   if (state.workMode) {
+    const endsLabel = 'ends 17:00';
     if (!isWorkDay(now)) {
-      return { progress: 0, remainingLabel: 'not a work day', cardState: 'not-work-time' };
+      return { progress: 0, remainingLabel: 'not a work day', endsLabel, cardState: 'not-work-time' };
     }
     const mins = now.getHours() * 60 + now.getMinutes();
     if (mins < WORK_START) {
-      return { progress: 0, remainingLabel: 'work starts at 08:00', cardState: 'not-work-time' };
+      return { progress: 0, remainingLabel: 'work starts at 08:00', endsLabel, cardState: 'not-work-time' };
     }
     if (mins >= LUNCH_START && mins < LUNCH_END) {
-      return { progress: (LUNCH_START - WORK_START) / WORK_MINUTES, remainingLabel: 'lunch break', cardState: 'not-work-time' };
+      return { progress: (LUNCH_START - WORK_START) / WORK_MINUTES, remainingLabel: 'lunch break', endsLabel, cardState: 'not-work-time' };
     }
     if (mins >= WORK_END) {
-      return { progress: 1, remainingLabel: 'work day done', cardState: 'not-work-time' };
+      return { progress: 1, remainingLabel: 'work day done', endsLabel, cardState: 'not-work-time' };
     }
     const elapsed = elapsedWorkMinutesToday(now);
     const remaining = WORK_MINUTES - elapsed;
-    return { progress: elapsed / WORK_MINUTES, remainingLabel: fmtMinutes(remaining) + ' remaining', cardState: 'active' };
+    return { progress: elapsed / WORK_MINUTES, remainingLabel: fmtMinutes(remaining) + ' remaining', endsLabel, cardState: 'active' };
   }
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const endsLabel = `ends ${fmtDate(tomorrow)}`;
   const secs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
   const remainSecs = 86400 - secs;
-  return { progress: secs / 86400, remainingLabel: fmtMinutes(remainSecs / 60) + ' remaining', cardState: 'active' };
+  return { progress: secs / 86400, remainingLabel: fmtMinutes(remainSecs / 60) + ' remaining', endsLabel, cardState: 'active' };
 }
 
 function getWeekState(now) {
@@ -191,23 +223,29 @@ function getWeekState(now) {
 
   if (state.workMode) {
     const friday = new Date(monday);
-    friday.setDate(monday.getDate() + 5); // exclusive end (Sat)
-    const totalWork = countWorkDays(monday, friday);
+    friday.setDate(monday.getDate() + 4); // Friday
+    const saturdayEnd = new Date(monday);
+    saturdayEnd.setDate(monday.getDate() + 5);
+    const endsLabel = `ends ${fmtDate(friday)}`;
+    const totalWork = countWorkDays(monday, saturdayEnd);
     if (totalWork === 0) {
-      return { progress: 0, remainingLabel: 'no work days this week', cardState: 'not-work-time' };
+      return { progress: 0, remainingLabel: 'no work days this week', endsLabel, cardState: 'not-work-time' };
     }
     let elapsed = countWorkDays(monday, startOfDay(now));
     if (isWorkDay(now)) elapsed += elapsedWorkMinutesToday(now) / WORK_MINUTES;
     const progress = Math.min(1, elapsed / totalWork);
     const remaining = Math.ceil(totalWork - elapsed);
     const label = remaining <= 0 ? 'week done' : fmtWorkDays(remaining);
-    return { progress, remainingLabel: label, cardState: 'active' };
+    return { progress, remainingLabel: label, endsLabel, cardState: 'active' };
   }
 
+  const sunday = new Date(nextMonday);
+  sunday.setDate(nextMonday.getDate() - 1);
+  const endsLabel = `ends ${fmtDate(sunday)}`;
   const progress = (now - monday) / (nextMonday - monday);
   const remainMs = nextMonday - now;
   const remainDays = Math.ceil(remainMs / 86400000);
-  return { progress, remainingLabel: fmtDays(remainDays), cardState: 'active' };
+  return { progress, remainingLabel: fmtDays(remainDays), endsLabel, cardState: 'active' };
 }
 
 function getMonthState(now) {
@@ -215,29 +253,32 @@ function getMonthState(now) {
   const month = now.getMonth();
   const firstDay = new Date(year, month, 1);
   const firstNextMonth = new Date(year, month + 1, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const endsLabel = `ends ${fmtDate(lastDay)}`;
 
   if (state.workMode) {
     const totalWork = countWorkDays(firstDay, firstNextMonth);
     if (totalWork === 0) {
-      return { progress: 1, remainingLabel: 'no work days this month', cardState: 'not-work-time' };
+      return { progress: 1, remainingLabel: 'no work days this month', endsLabel, cardState: 'not-work-time' };
     }
     let elapsed = countWorkDays(firstDay, startOfDay(now));
     if (isWorkDay(now)) elapsed += elapsedWorkMinutesToday(now) / WORK_MINUTES;
     const progress = Math.min(1, elapsed / totalWork);
     const remaining = Math.ceil(totalWork - elapsed);
     const label = remaining <= 0 ? 'month done' : fmtWorkDays(remaining);
-    return { progress, remainingLabel: label, cardState: 'active' };
+    return { progress, remainingLabel: label, endsLabel, cardState: 'active' };
   }
 
   const progress = (now - firstDay) / (firstNextMonth - firstDay);
   const remainDays = Math.ceil((firstNextMonth - now) / 86400000);
-  return { progress, remainingLabel: fmtDays(remainDays), cardState: 'active' };
+  return { progress, remainingLabel: fmtDays(remainDays), endsLabel, cardState: 'active' };
 }
 
 function getYearState(now) {
   const year = now.getFullYear();
   const firstDay = new Date(year, 0, 1);
   const firstNextYear = new Date(year + 1, 0, 1);
+  const endsLabel = `ends 31 Dec`;
 
   if (state.workMode) {
     const totalWork = countWorkDays(firstDay, firstNextYear);
@@ -246,25 +287,26 @@ function getYearState(now) {
     const progress = Math.min(1, elapsed / totalWork);
     const remaining = Math.ceil(totalWork - elapsed);
     const label = remaining <= 0 ? 'year done' : fmtWorkDays(remaining);
-    return { progress, remainingLabel: label, cardState: 'active' };
+    return { progress, remainingLabel: label, endsLabel, cardState: 'active' };
   }
 
   const progress = (now - firstDay) / (firstNextYear - firstDay);
   const remainDays = Math.ceil((firstNextYear - now) / 86400000);
-  return { progress, remainingLabel: fmtDays(remainDays), cardState: 'active' };
+  return { progress, remainingLabel: fmtDays(remainDays), endsLabel, cardState: 'active' };
 }
 
 function getSummerState(now) {
   const { midsommar, fallStart } = state;
-  if (!midsommar || !fallStart) return { progress: 0, remainingLabel: '…', cardState: 'active' };
+  if (!midsommar || !fallStart) return { progress: 0, remainingLabel: '…', endsLabel: '', cardState: 'active' };
 
   const year = now.getFullYear();
   const janFirst = new Date(year, 0, 1);
+  const endsLabel = `ends ${fmtDate(midsommar)}`;
 
   // Currently summer
   if (now >= midsommar && now < fallStart) {
     const backDate = fallStart.toLocaleDateString('sv-SE', { month: 'short', day: 'numeric' });
-    return { progress: 1, remainingLabel: `back ${backDate}`, cardState: 'summer' };
+    return { progress: 1, remainingLabel: `back ${backDate}`, endsLabel, cardState: 'summer' };
   }
 
   // Pre-summer (before midsommar)
@@ -276,17 +318,17 @@ function getSummerState(now) {
       const progress = totalWork > 0 ? Math.min(1, elapsed / totalWork) : 0;
       const remaining = Math.ceil(totalWork - elapsed);
       const label = remaining <= 0 ? 'summer soon!' : fmtWorkDays(remaining, '', 'till summer');
-      return { progress, remainingLabel: label, cardState: 'active' };
+      return { progress, remainingLabel: label, endsLabel, cardState: 'active' };
     }
     const progress = (now - janFirst) / (midsommar - janFirst);
     const remainDays = Math.ceil((midsommar - now) / 86400000);
-    return { progress, remainingLabel: fmtDays(remainDays, '', 'till summer'), cardState: 'active' };
+    return { progress, remainingLabel: fmtDays(remainDays, '', 'till summer'), endsLabel, cardState: 'active' };
   }
 
-  // After summer (fall/end of year) — point to next year's summer
+  // After summer (fall/end of year)
   const nextYearStart = new Date(year + 1, 0, 1);
   const remainDays = Math.ceil((nextYearStart - now) / 86400000);
-  return { progress: 1, remainingLabel: fmtDays(remainDays, '', 'till new year'), cardState: 'off-season' };
+  return { progress: 1, remainingLabel: fmtDays(remainDays, '', 'till new year'), endsLabel, cardState: 'off-season' };
 }
 
 function getFallState(now) {
@@ -316,6 +358,31 @@ function getFallState(now) {
   return { progress, remainingLabel: fmtDays(remainDays), cardState: 'active' };
 }
 
+function getCustomState(timer, now) {
+  const target = new Date(timer.date + 'T00:00:00');
+  const start = timer.startDate ? new Date(timer.startDate + 'T00:00:00') : new Date(timer.createdAt);
+  const endsLabel = `ends ${fmtDate(target)}`;
+  if (now >= target) {
+    return { progress: 1, remainingLabel: 'done!', endsLabel, cardState: 'active' };
+  }
+
+  if (state.workMode) {
+    const totalWork = countWorkDays(start, target);
+    let elapsed = countWorkDays(start, startOfDay(now));
+    if (isWorkDay(now)) elapsed += elapsedWorkMinutesToday(now) / WORK_MINUTES;
+    const progress = totalWork > 0 ? Math.max(0, Math.min(1, elapsed / totalWork)) : 0;
+    const remaining = Math.ceil(totalWork - elapsed);
+    const label = remaining <= 0 ? 'done!' : fmtWorkDays(remaining, '', 'remaining');
+    return { progress, remainingLabel: label, endsLabel, cardState: 'active' };
+  }
+
+  const total = target - start;
+  const elapsed = now - start;
+  const progress = total > 0 ? Math.max(0, Math.min(1, elapsed / total)) : 0;
+  const remainDays = Math.ceil((target - startOfDay(now)) / 86400000);
+  return { progress, remainingLabel: fmtDays(remainDays, '', 'remaining'), endsLabel, cardState: 'active' };
+}
+
 function getCardState(id, now) {
   switch (id) {
     case 'hour':   return getHourState(now);
@@ -333,17 +400,15 @@ function getCardState(id, now) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ParticleField {
-  constructor(canvas, seed) {
+  constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.seed = seed;
-    this.particles = [];
-    this.N = 120;
+    this.COLS = 100;
+    this.ROWS = 4;
+    this.N = this.COLS * this.ROWS;
     this.targetProgress = 0;
     this.currentProgress = 0;
     this.cardState = 'active';
-
-    this._initParticles();
 
     this._ro = new ResizeObserver(() => this._onResize());
     this._ro.observe(canvas.parentElement);
@@ -355,21 +420,6 @@ class ParticleField {
     this.canvas.height = rect.height * devicePixelRatio;
     this.canvas.style.width = rect.width + 'px';
     this.canvas.style.height = rect.height + 'px';
-    this._initParticles();
-  }
-
-  _initParticles() {
-    const { N, seed } = this;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    this.particles = Array.from({ length: N }, (_, i) => ({
-      x:     seededRandom(seed * 200 + i * 5    ) * w,
-      y:     seededRandom(seed * 200 + i * 5 + 1) * h,
-      size:  (1.5 + seededRandom(seed * 200 + i * 5 + 2) * 2.5) * devicePixelRatio,
-      phase: seededRandom(seed * 200 + i * 5 + 3) * Math.PI * 2,
-      speed: 0.3 + seededRandom(seed * 200 + i * 5 + 4) * 0.5,
-      opacity: 0,
-    }));
   }
 
   update(progress, cardState) {
@@ -377,32 +427,53 @@ class ParticleField {
     this.cardState = cardState;
   }
 
-  draw(ts) {
-    const { ctx, canvas, particles, N } = this;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  draw(_ts) {
+    const { ctx, canvas, COLS, ROWS, N } = this;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
 
-    // Smoothly interpolate progress
-    this.currentProgress += (this.targetProgress - this.currentProgress) * 0.025;
+    this.currentProgress += (this.targetProgress - this.currentProgress) * 0.05;
+    const filledCount = Math.round(this.currentProgress * N);
 
-    const activeCount = Math.floor(this.currentProgress * N);
-    const color = PARTICLE_COLORS[this.cardState] || PARTICLE_COLORS.active;
-    const t = ts * 0.001;
+    const theme = document.documentElement.dataset.theme;
+    const isDark = theme === 'dark' ||
+      (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const colorMap = isDark ? PARTICLE_COLORS_DARK : PARTICLE_COLORS;
+    const color = colorMap[this.cardState] || colorMap.active;
+    const fillColor = `rgba(${color[0]},${color[1]},${color[2]},0.75)`;
+    const emptyColor = `rgba(${color[0]},${color[1]},${color[2]},0.15)`;
 
-    for (let i = 0; i < N; i++) {
-      const p = particles[i];
-      const targetOpacity = i < activeCount
-        ? 0.35 + seededRandom(this.seed * 200 + i * 5 + 2) * 0.3
-        : 0;
-      p.opacity += (targetOpacity - p.opacity) * 0.04;
-      if (p.opacity < 0.005) continue;
+    // Fixed dot size, tightly packed, centered in card
+    const dpr = devicePixelRatio;
+    const radius = 4 * dpr;
+    const gap    = 2 * dpr;
+    const step   = radius * 2 + gap;
 
-      const dx = Math.sin(t * p.speed + p.phase) * 3 * devicePixelRatio;
-      const dy = Math.cos(t * p.speed * 0.7 + p.phase + 1.3) * 2 * devicePixelRatio;
+    const gridW = COLS * step - gap;
+    const gridH = ROWS * step - gap;
+    const startX = (w - gridW) / 2;
+    const startY = (h - gridH) / 2;
+    const strokeW = Math.max(1, radius * 0.4);
 
-      ctx.beginPath();
-      ctx.arc(p.x + dx, p.y + dy, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${p.opacity})`;
-      ctx.fill();
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const idx = r * COLS + c;
+        const x = startX + c * step + radius;
+        const y = startY + r * step + radius;
+
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+        if (idx < filledCount) {
+          ctx.fillStyle = idx === filledCount - 1 ? 'rgba(205,10,0,0.85)' : fillColor;
+          ctx.fill();
+        } else {
+          ctx.strokeStyle = emptyColor;
+          ctx.lineWidth = strokeW;
+          ctx.stroke();
+        }
+      }
     }
   }
 
@@ -446,66 +517,260 @@ async function loadData() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOM & Animation
+// DOM & Card Management
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildDOM() {
-  const container = document.getElementById('cards');
-  CARDS.forEach(({ id, label }) => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.id = `card-${id}`;
+let particleFields = null;
 
-    const canvas = document.createElement('canvas');
-    card.appendChild(canvas);
-
-    const content = document.createElement('div');
-    content.className = 'card-content';
-    content.innerHTML = `
-      <span class="card-name">${label}</span>
-      <span class="card-remaining"></span>
-    `;
-    card.appendChild(content);
-    container.appendChild(card);
-  });
+function shouldShowSummer(now) {
+  return state.midsommar && now < state.midsommar;
 }
 
-function initParticleFields() {
-  const fields = {};
-  CARDS.forEach(({ id }, i) => {
-    const card = document.getElementById(`card-${id}`);
+function shouldShowFall(now) {
+  return state.fallStart && now >= state.fallStart;
+}
+
+function isBuiltinCardVisible(id, now) {
+  if (state.hiddenCards.has(id)) return false;
+  if (id === 'summer' && !shouldShowSummer(now)) return false;
+  if (id === 'fall' && !shouldShowFall(now)) return false;
+  return true;
+}
+
+function makeCardShell(id) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = `card-${id}`;
+
+  const canvas = document.createElement('canvas');
+  card.appendChild(canvas);
+
+  const content = document.createElement('div');
+  content.className = 'card-content';
+  content.innerHTML = `
+    <span class="card-name"></span>
+    <span class="card-ends"></span>
+    <span class="card-remaining"></span>
+  `;
+  card.appendChild(content);
+  return card;
+}
+
+function rebuildCards() {
+  if (particleFields) {
+    Object.values(particleFields).forEach(f => f.destroy());
+  }
+  particleFields = {};
+
+  const container = document.getElementById('cards');
+  container.innerHTML = '';
+
+  const now = new Date();
+
+  // Visible built-in cards
+  CARDS.forEach(({ id, label }) => {
+    if (!isBuiltinCardVisible(id, now)) return;
+
+    const card = makeCardShell(id);
+    card.querySelector('.card-name').textContent = label;
+
+    if (state.editMode) {
+      const btn = document.createElement('button');
+      btn.className = 'card-edit-btn card-remove';
+      btn.dataset.id = id;
+      btn.setAttribute('aria-label', 'Hide');
+      btn.textContent = '×';
+      card.querySelector('.card-content').appendChild(btn);
+    }
+
+    container.appendChild(card);
+  });
+
+  // Custom timer cards
+  state.customTimers.forEach(timer => {
+    const card = makeCardShell(timer.id);
+    card.querySelector('.card-name').textContent = timer.label;
+
+    if (state.editMode) {
+      const btn = document.createElement('button');
+      btn.className = 'card-edit-btn card-remove';
+      btn.dataset.customId = timer.id;
+      btn.setAttribute('aria-label', 'Remove');
+      btn.textContent = '×';
+      card.querySelector('.card-content').appendChild(btn);
+    }
+
+    container.appendChild(card);
+  });
+
+  // Edit mode extras
+  if (state.editMode) {
+    // Ghost cards for hidden built-in cards (not auto-hidden)
+    CARDS.forEach(({ id, label }) => {
+      if (!state.hiddenCards.has(id)) return;
+      const ghost = document.createElement('div');
+      ghost.className = 'card card-ghost';
+      ghost.innerHTML = `
+        <div class="card-content card-content-interactive">
+          <span class="card-name">${label}</span>
+          <button class="card-edit-btn card-restore" data-id="${id}" aria-label="Restore">+</button>
+        </div>
+      `;
+      container.appendChild(ghost);
+    });
+
+    // Add custom timer form
+    const addCard = document.createElement('div');
+    addCard.className = 'card card-add';
+    addCard.innerHTML = `
+      <div class="add-timer-form">
+        <input type="text" id="newTimerLabel" placeholder="Label" maxlength="24">
+        <input type="date" id="newTimerStart">
+        <input type="date" id="newTimerDate">
+        <button id="addTimerBtn">Add</button>
+      </div>
+    `;
+    container.appendChild(addCard);
+  }
+
+  // Init particle fields for all real (non-ghost) cards
+  const cardEls = container.querySelectorAll('.card:not(.card-ghost):not(.card-add)');
+  cardEls.forEach(card => {
+    const id = card.id.replace('card-', '');
     const canvas = card.querySelector('canvas');
-    // Trigger initial resize
+    if (!canvas) return;
     const rect = card.getBoundingClientRect();
     canvas.width = rect.width * devicePixelRatio;
     canvas.height = rect.height * devicePixelRatio;
     canvas.style.width = rect.width + 'px';
     canvas.style.height = rect.height + 'px';
-    fields[id] = new ParticleField(canvas, i + 1);
+    particleFields[id] = new ParticleField(canvas);
   });
-  return fields;
+
+  // Attach edit-mode button listeners
+  container.querySelectorAll('.card-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const customId = btn.dataset.customId;
+      if (id) {
+        state.hiddenCards.add(id);
+        localStorage.setItem('hiddenCards', JSON.stringify([...state.hiddenCards]));
+      } else if (customId) {
+        state.customTimers = state.customTimers.filter(t => t.id !== customId);
+        localStorage.setItem('customTimers', JSON.stringify(state.customTimers));
+      }
+      rebuildCards();
+    });
+  });
+
+  container.querySelectorAll('.card-restore').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.hiddenCards.delete(btn.dataset.id);
+      localStorage.setItem('hiddenCards', JSON.stringify([...state.hiddenCards]));
+      rebuildCards();
+    });
+  });
+
+  const addBtn = document.getElementById('addTimerBtn');
+  if (addBtn) {
+    // Default dates to today
+    document.getElementById('newTimerStart').value = formatDate(new Date());
+    document.getElementById('newTimerDate').value = formatDate(new Date());
+
+    addBtn.addEventListener('click', () => {
+      const label = document.getElementById('newTimerLabel').value.trim();
+      const startDate = document.getElementById('newTimerStart').value;
+      const date = document.getElementById('newTimerDate').value;
+      if (!label || !date) return;
+      state.customTimers.push({
+        id: `custom-${Date.now()}`,
+        label,
+        startDate,
+        date,
+        createdAt: new Date().toISOString(),
+      });
+      localStorage.setItem('customTimers', JSON.stringify(state.customTimers));
+      rebuildCards();
+    });
+  }
 }
 
-let particleFields = null;
+// ─────────────────────────────────────────────────────────────────────────────
+// Animation
+// ─────────────────────────────────────────────────────────────────────────────
+
+const weekEl = document.getElementById('week-number');
 
 function tick(ts) {
   const now = new Date();
-  CARDS.forEach(({ id, label }) => {
-    const { progress, remainingLabel, cardState } = getCardState(id, now);
+  if (weekEl) weekEl.innerHTML = `week <span style="color:var(--accent)">${getISOWeek(now)}</span>`;
+
+  CARDS.forEach(({ id }) => {
+    if (!isBuiltinCardVisible(id, now)) return;
+    if (!particleFields[id]) return;
+
+    const { progress, remainingLabel, endsLabel, cardState } = getCardState(id, now);
     const card = document.getElementById(`card-${id}`);
+    if (!card) return;
 
-    // Update card state class
     card.className = `card state-${cardState}`;
-
-    // Update text
     card.querySelector('.card-remaining').textContent = remainingLabel;
+    card.querySelector('.card-ends').textContent = endsLabel || '';
 
-    // Update particles
     particleFields[id].update(progress, cardState);
     particleFields[id].draw(ts);
   });
 
+  state.customTimers.forEach(timer => {
+    if (!particleFields[timer.id]) return;
+    const { progress, remainingLabel, endsLabel, cardState } = getCustomState(timer, now);
+    const card = document.getElementById(`card-${timer.id}`);
+    if (!card) return;
+
+    card.className = `card state-${cardState}`;
+    card.querySelector('.card-remaining').textContent = remainingLabel;
+    card.querySelector('.card-ends').textContent = endsLabel || '';
+
+    particleFields[timer.id].update(progress, cardState);
+    particleFields[timer.id].draw(ts);
+  });
+
   requestAnimationFrame(tick);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theme & Toggle Setup
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isDarkMode() {
+  const theme = document.documentElement.dataset.theme;
+  return theme === 'dark' ||
+    (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+
+function setupThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  const ICONS = { dark: '☀', light: '☾' };
+
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || saved === 'light') {
+    document.documentElement.dataset.theme = saved;
+  }
+
+  function updateIcon() {
+    btn.textContent = isDarkMode() ? ICONS.dark : ICONS.light;
+  }
+
+  updateIcon();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateIcon);
+
+  btn.addEventListener('click', () => {
+    const dark = isDarkMode();
+    const next = dark ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('theme', next);
+    updateIcon();
+  });
 }
 
 function setupToggles() {
@@ -513,17 +778,38 @@ function setupToggles() {
   const bridgeDaysEl = document.getElementById('bridgeDays');
   const bridgeDaysLabel = document.getElementById('bridgeDaysLabel');
 
+  // Restore saved state
+  const savedWorkMode = localStorage.getItem('workMode') === 'true';
+  const savedBridgeDays = localStorage.getItem('bridgeDays') === 'true';
+  workModeEl.checked = savedWorkMode;
+  state.workMode = savedWorkMode;
+  bridgeDaysEl.checked = savedBridgeDays && savedWorkMode;
+  state.includeBridgeDays = savedBridgeDays && savedWorkMode;
+  bridgeDaysLabel.classList.toggle('visible', savedWorkMode);
+
   workModeEl.addEventListener('change', () => {
     state.workMode = workModeEl.checked;
+    localStorage.setItem('workMode', state.workMode);
     bridgeDaysLabel.classList.toggle('visible', state.workMode);
     if (!state.workMode) {
       bridgeDaysEl.checked = false;
       state.includeBridgeDays = false;
+      localStorage.setItem('bridgeDays', 'false');
     }
   });
 
   bridgeDaysEl.addEventListener('change', () => {
     state.includeBridgeDays = bridgeDaysEl.checked;
+    localStorage.setItem('bridgeDays', state.includeBridgeDays);
+  });
+}
+
+function setupEditMode() {
+  const btn = document.getElementById('editToggle');
+  btn.addEventListener('click', () => {
+    state.editMode = !state.editMode;
+    btn.classList.toggle('active', state.editMode);
+    rebuildCards();
   });
 }
 
@@ -532,18 +818,18 @@ function setupToggles() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function init() {
-  // Show loading indicator
   const loadingEl = document.createElement('div');
   loadingEl.id = 'loading';
   loadingEl.textContent = 'loading';
   document.body.appendChild(loadingEl);
 
-  buildDOM();
   setupToggles();
+  setupThemeToggle();
+  setupEditMode();
 
   await loadData();
 
-  particleFields = initParticleFields();
+  rebuildCards();
 
   loadingEl.classList.add('hidden');
   setTimeout(() => loadingEl.remove(), 600);
