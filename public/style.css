@@ -20,7 +20,6 @@ html, body {
   font-family: 'Inter', system-ui, sans-serif;
   font-weight: 300;
   color: var(--text);
-  overflow: hidden;
 }
 
 /* ── Header ─────────────────────────────────────── */
@@ -31,6 +30,16 @@ header {
   justify-content: space-between;
   padding: 0 32px;
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+@media (max-width: 600px) {
+  header {
+    padding: 0 16px;
+  }
 }
 
 #week-number {
@@ -43,6 +52,12 @@ header {
   display: flex;
   gap: 28px;
   align-items: center;
+}
+
+@media (max-width: 600px) {
+  .toggles {
+    gap: 12px;
+  }
 }
 
 .toggle {
@@ -92,6 +107,18 @@ header {
   font-size: 12px;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#workModeLabel .toggle-label::before { content: '⚒'; filter: grayscale(100%); opacity: 0.7; }
+#bridgeDaysLabel .toggle-label::before { content: '🏖'; filter: grayscale(100%); opacity: 0.7; }
+
+@media (max-width: 600px) {
+  .toggle-label span {
+    display: none;
+  }
 }
 
 #bridgeDaysLabel {
@@ -107,7 +134,7 @@ header {
 
 /* ── Cards ───────────────────────────────────────── */
 #cards {
-  height: calc(100vh - var(--header-height));
+  min-height: calc(100vh - var(--header-height));
   display: flex;
   flex-direction: column;
 }
@@ -115,6 +142,7 @@ header {
 .card {
   position: relative;
   flex: 1;
+  min-height: 80px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
   overflow: hidden;
 }
@@ -140,6 +168,12 @@ header {
   pointer-events: none;
 }
 
+@media (max-width: 600px) {
+  .card-content {
+    padding: 8px 12px 0;
+  }
+}
+
 .card-name {
   font-size: 11px;
   font-weight: 400;
@@ -147,6 +181,12 @@ header {
   text-transform: uppercase;
   color: var(--text-muted);
   transition: color 0.4s ease;
+}
+
+@media (max-width: 600px) {
+  .card-name, .card-ends, .card-remaining {
+    font-size: 10px;
+  }
 }
 
 .card-ends {
@@ -277,6 +317,19 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .add-timer-form {
+    flex-direction: column;
+    padding: 20px 0;
+    gap: 12px;
+  }
+
+  .add-timer-form input[type="text"],
+  .add-timer-form input[type="date"] {
+    width: 200px !important;
+  }
 }
 
 .add-timer-form input[type="text"],

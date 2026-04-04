@@ -403,9 +403,9 @@ class ParticleField {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.COLS = 100;
+    this.COLS = 0;
     this.ROWS = 4;
-    this.N = this.COLS * this.ROWS;
+    this.N = 0;
     this.targetProgress = 0;
     this.currentProgress = 0;
     this.cardState = 'active';
@@ -420,6 +420,16 @@ class ParticleField {
     this.canvas.height = rect.height * devicePixelRatio;
     this.canvas.style.width = rect.width + 'px';
     this.canvas.style.height = rect.height + 'px';
+
+    const dpr = devicePixelRatio;
+    const radius = 4 * dpr;
+    const gap    = 2 * dpr;
+    const step   = radius * 2 + gap;
+
+    // Calculate how many columns fit with 32px padding on each side
+    const padding = 32 * dpr;
+    this.COLS = Math.max(1, Math.floor((this.canvas.width - padding * 2) / step));
+    this.N = this.COLS * this.ROWS;
   }
 
   update(progress, cardState) {
@@ -429,6 +439,7 @@ class ParticleField {
 
   draw(_ts) {
     const { ctx, canvas, COLS, ROWS, N } = this;
+    if (N === 0) return;
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
@@ -639,11 +650,6 @@ function rebuildCards() {
     const id = card.id.replace('card-', '');
     const canvas = card.querySelector('canvas');
     if (!canvas) return;
-    const rect = card.getBoundingClientRect();
-    canvas.width = rect.width * devicePixelRatio;
-    canvas.height = rect.height * devicePixelRatio;
-    canvas.style.width = rect.width + 'px';
-    canvas.style.height = rect.height + 'px';
     particleFields[id] = new ParticleField(canvas);
   });
 
